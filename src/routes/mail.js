@@ -4,7 +4,7 @@ const { transporter } = require('../config/mailer');
 const { fetchEmails, getUnreadCount } = require('../config/imap');
 const { scoreEmail } = require('../utils/spam');
 const { verifyAccessToken } = require('../middleware/auth');
-const { mailLimiter } = require('../middleware/rateLimiter');
+const { mailLimiter } = require('../middleware/ratelimiter');
 const { encryptMessage } = require('../utils/encryption');
 const logger  = require('../utils/logger');
 

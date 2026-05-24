@@ -6,7 +6,7 @@ const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/db');
 const { blockToken, setSession, getSession } = require('../config/sessions');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter } = require('../middleware/ratelimiter');
 const { verifyAccessToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
