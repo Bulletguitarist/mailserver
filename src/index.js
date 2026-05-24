@@ -16,7 +16,11 @@ const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'https://mailserver-ui.vercel.app',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean),
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
