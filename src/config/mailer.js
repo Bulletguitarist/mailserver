@@ -4,15 +4,17 @@ const logger = require('../utils/logger');
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT),
-  secure: false,          // STARTTLS on port 587
+  secure: false,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
   tls: {
-    rejectUnauthorized: true,
-    minVersion: 'TLSv1.2',
+    rejectUnauthorized: false,
   },
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 5000,
 });
 
 // Verify connection on startup
