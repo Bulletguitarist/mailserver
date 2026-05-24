@@ -1,30 +1,36 @@
-const nodemailer = require('nodemailer');
+const SibApiV3Sdk = require('@getbrevo/brevo');
 const logger = require('../utils/logger');
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+apiInstance.setApiKey(
+  SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
+
+const sendMail = async ({ from, to, subject, text, html }) => {
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.htmlContent = html || `<p>${text}</p>`;
+  sendSmtpEmail.sender = { name: 'SecureMail', email: process.env.SMTP_FROM };
+  sendSmtpEmail.to = [{ email: Array.isArray(to) ? to[0] : to }];
+  return await apiInstance.sendTransacEmail(sendSmtpEmail);
+};
 
 const verifyMailer = async () => {
   try {
-    await transporter.verify();
-    logger.info('✅ SMTP connection verified');
+    if (!process.env.BREVO_API_KEY) throw new Error('BREVO_API_KEY not set');
+    logger.info('✅ Brevo API ready');
     return true;
   } catch (err) {
-    logger.error('❌ SMTP connection failed: ' + err.message);
+    logger.error('❌ Brevo API failed: ' + err.message);
     return false;
+  }
+};
+
+const transporter = {
+  sendMail: async (opts) => {
+    const result = await sendMail(opts);
+    return { messageId: result?.messageId || `brevo-${Date.now()}` };
   }
 };
 
