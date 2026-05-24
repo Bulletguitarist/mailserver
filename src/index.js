@@ -49,8 +49,12 @@ app.use((err, req, res, next) => {
 
 // ── Boot ─────────────────────────────────────────────────────────────
 const start = async () => {
-  await verifyMailer();
-  app.listen(PORT, () => {
+  try {
+    await verifyMailer();
+  } catch (err) {
+    logger.error('SMTP failed but continuing: ' + err.message);
+  }
+  app.listen(PORT, '0.0.0.0', () => {
     logger.info(`🚀 Server running on http://localhost:${PORT}`);
   });
 };
