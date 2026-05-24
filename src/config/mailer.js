@@ -1,14 +1,14 @@
-const SibApiV3Sdk = require('@getbrevo/brevo');
+const Brevo = require('@getbrevo/brevo').default || require('@getbrevo/brevo');
 const logger = require('../utils/logger');
 
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+const apiInstance = new Brevo.TransactionalEmailsApi();
 apiInstance.setApiKey(
-  SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
+  Brevo.TransactionalEmailsApiApiKeys.apiKey,
   process.env.BREVO_API_KEY
 );
 
 const sendMail = async ({ from, to, subject, text, html }) => {
-  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  const sendSmtpEmail = new Brevo.SendSmtpEmail();
   sendSmtpEmail.subject = subject;
   sendSmtpEmail.htmlContent = html || `<p>${text}</p>`;
   sendSmtpEmail.sender = { name: 'SecureMail', email: process.env.SMTP_FROM };
