@@ -4,7 +4,7 @@ const helmet     = require('helmet');
 const cors       = require('cors');
 const morgan     = require('morgan');
 const logger     = require('./utils/logger');
-const { apiLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter } = require('./middleware/ratelimiter');
 const healthRouter   = require('./routes/health');
 const { verifyMailer } = require('./config/mailer');
 
