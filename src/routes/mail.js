@@ -28,9 +28,15 @@ router.post('/send', mailLimiter, async (req, res) => {
     const recipient = recipientResult.rows[0];
 
     if (recipient?.public_key) {
-      bodyToStore = await encryptMessage(body, recipient.public_key);
-      isEncrypted = 1;
-      logger.info(`Email encrypted for ${to}`);
+      try {
+        bodyToStore = await encryptMessage(body, recipient.public_key);
+        isEncrypted = 1;
+        logger.info(`Email encrypted for ${to}`);
+      } catch (encErr) {
+        logger.error('Encryption failed, sending plaintext: ' + encErr.message);
+        bodyToStore = body;
+        isEncrypted = 0;
+      }
     }
 
     const messageId = `<${Date.now()}-${Math.random().toString(36).slice(2)}@securemail>`;
