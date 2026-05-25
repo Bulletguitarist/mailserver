@@ -39,7 +39,7 @@ router.post('/send', mailLimiter, async (req, res) => {
       }
     }
 
-    const messageId = `<${Date.now()}-${Math.random().toString(36).slice(2)}@securemail>`;
+    const messageId = `<${uuidv4()}@securemail>`;
 
     // Save to sender's sent folder
     await pool.query(
