@@ -1,14 +1,14 @@
 const router = require('express').Router();
-const db = require('../config/db');
+const { pool } = require('../config/db');
 
 router.get('/', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-router.get('/deep', (req, res) => {
+router.get('/deep', async (req, res) => {
   let dbOk = false;
   try {
-    db.prepare('SELECT 1').get();
+    await pool.query('SELECT 1');
     dbOk = true;
   } catch (_) {}
 

@@ -8,6 +8,7 @@
     "migrate": "node migrations/run.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.9.0",
     "cors": "^2.8.6",
@@ -21,7 +22,7 @@
     "mailparser": "^3.9.8",
     "morgan": "^1.10.1",
     "nodemailer": "^6.10.1",
-    "pg": "^8.11.3",
+    "pg": "^8.21.0",
     "qrcode": "^1.5.4",
     "redis": "^4.6.10",
     "sib-api-v3-sdk": "^8.5.0",
