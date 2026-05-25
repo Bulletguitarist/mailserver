@@ -1,7 +1,5 @@
 const router  = require('express').Router();
 const db      = require('../config/db');
-const { transporter } = require('../config/mailer');
-const { fetchEmails, getUnreadCount } = require('../config/imap');
 const { scoreEmail } = require('../utils/spam');
 const { verifyAccessToken } = require('../middleware/auth');
 const { mailLimiter } = require('../middleware/ratelimiter');
@@ -20,18 +18,18 @@ router.post('/send', mailLimiter, async (req, res) => {
       return res.status(400).json({ error: 'to, subject, and body are required' });
     }
 
-    // Spam check on outgoing (catch abuse)
-    const spam = scoreEmail({ subject, text: body, from: process.env.SMTP_FROM });
+    // Spam check
+    const spam = scoreEmail({ subject, text: body, from: req.user.email });
     if (spam.isSpam) {
       return res.status(400).json({ error: 'Message flagged as spam', reasons: spam.reasons });
     }
 
-    // Encrypt body if recipient has public key
+    // Encrypt if recipient has public key
     let bodyToStore = body;
     let isEncrypted = 0;
 
     const recipient = db.prepare(
-      'SELECT public_key FROM users WHERE email = ?'
+      'SELECT id, public_key FROM users WHERE email = ?'
     ).get(Array.isArray(to) ? to[0] : to);
 
     if (recipient?.public_key) {
@@ -40,18 +38,9 @@ router.post('/send', mailLimiter, async (req, res) => {
       logger.info(`Email encrypted for ${to}`);
     }
 
-    // Send via SMTP
-    const info = await transporter.sendMail({
-      from:    `"SecureMail" <${process.env.SMTP_FROM}>`,
-      to,
-      cc:      cc || undefined,
-      bcc:     bcc || undefined,
-      subject,
-      text:    body,
-      html:    `<div style="font-family:Arial,sans-serif">${body.replace(/\n/g, '<br>')}</div>`,
-    });
+    const messageId = `<${Date.now()}-${Math.random().toString(36).slice(2)}@securemail>`;
 
-    // Save to DB as sent
+    // Save to sender's sent folder
     db.prepare(`
       INSERT INTO emails (
         id, owner_id, from_address, to_addresses, cc_addresses, bcc_addresses,
@@ -64,23 +53,50 @@ router.post('/send', mailLimiter, async (req, res) => {
       )
     `).run(
       req.user.userId,
-      process.env.SMTP_FROM,
+      req.user.email,
       JSON.stringify(Array.isArray(to) ? to : [to]),
       JSON.stringify(cc ? [cc] : []),
       JSON.stringify(bcc ? [bcc] : []),
       subject,
       bodyToStore,
       isEncrypted,
-      info.messageId || null,
+      messageId,
     );
+
+    // Save to recipient's inbox if internal user
+    if (recipient) {
+      db.prepare(`
+        INSERT INTO emails (
+          id, owner_id, from_address, to_addresses,
+          subject, body_encrypted, is_encrypted,
+          folder, status, message_id, received_at
+        ) VALUES (
+          lower(hex(randomblob(16))), ?, ?, ?,
+          ?, ?, ?,
+          'inbox', 'received', ?, datetime('now')
+        )
+      `).run(
+        recipient.id,
+        req.user.email,
+        JSON.stringify([to]),
+        subject,
+        bodyToStore,
+        isEncrypted,
+        messageId,
+      );
+      logger.info(`Internal mail delivered to ${to}`);
+    }
 
     logger.info(`Mail sent by ${req.user.email} to ${to}`);
     res.json({
-      message: 'Email sent successfully',
-      messageId: info.messageId,
+      message: recipient
+        ? 'Email delivered internally!'
+        : 'Email saved (recipient not on SecureMail)',
+      messageId,
       to,
       subject,
       encrypted: Boolean(isEncrypted),
+      internal: Boolean(recipient),
     });
   } catch (err) {
     logger.error('Mail send error: ' + err.message);
@@ -89,67 +105,35 @@ router.post('/send', mailLimiter, async (req, res) => {
 });
 
 // ── GET /api/mail/inbox ──────────────────────────────────────────────
-router.get('/inbox', async (req, res) => {
+router.get('/inbox', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
-    logger.info(`Fetching inbox for ${req.user.email}`);
-
-    const emails = await fetchEmails(limit);
-
-    // Spam score each email + save new ones to DB
-    const processed = emails.map(email => {
-      const spam = scoreEmail(email);
-
-      // Save to DB if not already there (by messageId)
-      if (email.messageId) {
-        const exists = db.prepare(
-          'SELECT id FROM emails WHERE message_id = ?'
-        ).get(email.messageId);
-
-        if (!exists) {
-          db.prepare(`
-            INSERT OR IGNORE INTO emails (
-              id, owner_id, from_address, to_addresses,
-              subject, body_encrypted, is_encrypted,
-              folder, status, is_spam, spam_score,
-              message_id, received_at
-            ) VALUES (
-              lower(hex(randomblob(16))), ?, ?, ?,
-              ?, ?, 0,
-              ?, 'received', ?, ?,
-              ?, datetime('now')
-            )
-          `).run(
-            req.user.userId,
-            email.from,
-            JSON.stringify([email.to]),
-            email.subject,
-            email.text || '',
-            spam.isSpam ? 'spam' : 'inbox',
-            spam.isSpam ? 1 : 0,
-            spam.score,
-            email.messageId,
-          );
-        }
-      }
-
-      return {
-        ...email,
-        spam: {
-          score: spam.score,
-          label: spam.label,
-          isSpam: spam.isSpam,
-        },
-      };
-    });
+    const emails = db.prepare(`
+      SELECT id, from_address, to_addresses, subject,
+             body_encrypted, is_encrypted, is_read,
+             is_starred, spam_score, is_spam,
+             folder, received_at, created_at
+      FROM emails
+      WHERE owner_id = ? AND folder = 'inbox'
+      ORDER BY received_at DESC
+      LIMIT 50
+    `).all(req.user.userId);
 
     res.json({
-      total: processed.length,
-      emails: processed,
+      total: emails.length,
+      emails: emails.map(e => ({
+        ...e,
+        to_addresses: JSON.parse(e.to_addresses || '[]'),
+        encrypted: Boolean(e.is_encrypted),
+        spam: {
+          score: e.spam_score || 0,
+          isSpam: Boolean(e.is_spam),
+          label: e.spam_score >= 7 ? 'SPAM' : e.spam_score >= 4 ? 'SUSPICIOUS' : 'CLEAN',
+        }
+      })),
     });
   } catch (err) {
     logger.error('Inbox fetch error: ' + err.message);
-    res.status(500).json({ error: 'Failed to fetch inbox: ' + err.message });
+    res.status(500).json({ error: 'Failed to fetch inbox' });
   }
 });
 
@@ -158,7 +142,7 @@ router.get('/sent', (req, res) => {
   try {
     const emails = db.prepare(`
       SELECT id, from_address, to_addresses, subject,
-             status, sent_at, created_at, is_encrypted
+             status, is_encrypted, sent_at, created_at
       FROM emails
       WHERE owner_id = ? AND folder = 'sent'
       ORDER BY sent_at DESC
@@ -179,10 +163,13 @@ router.get('/sent', (req, res) => {
 });
 
 // ── GET /api/mail/unread ─────────────────────────────────────────────
-router.get('/unread', async (req, res) => {
+router.get('/unread', (req, res) => {
   try {
-    const count = await getUnreadCount();
-    res.json({ unread: count });
+    const result = db.prepare(`
+      SELECT COUNT(*) as count FROM emails
+      WHERE owner_id = ? AND folder = 'inbox' AND is_read = 0
+    `).get(req.user.userId);
+    res.json({ unread: result.count });
   } catch (err) {
     res.status(500).json({ error: 'Failed to get unread count' });
   }

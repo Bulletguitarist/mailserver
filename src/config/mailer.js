@@ -1,37 +1,18 @@
-const SibApiV3Sdk = require('sib-api-v3-sdk');
 const logger = require('../utils/logger');
 
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-
-const sendMail = async ({ from, to, subject, text, html }) => {
-  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-  sendSmtpEmail.subject = subject;
-  sendSmtpEmail.htmlContent = html || `<p>${text}</p>`;
-  sendSmtpEmail.sender = { name: 'SecureMail', email: process.env.SMTP_FROM };
-  sendSmtpEmail.to = [{ email: Array.isArray(to) ? to[0] : to }];
-  return await apiInstance.sendTransacEmail(sendSmtpEmail);
-};
-
-const verifyMailer = async () => {
-  try {
-    if (!process.env.BREVO_API_KEY) throw new Error('BREVO_API_KEY not set');
-    logger.info('✅ Brevo API ready');
-    return true;
-  } catch (err) {
-    logger.error('❌ Brevo API failed: ' + err.message);
-    return false;
-  }
-};
+// SMTP removed — using internal messaging system
+// External email support can be added later with verified domain
 
 const transporter = {
   sendMail: async (opts) => {
-    const result = await sendMail(opts);
-    return { messageId: result?.messageId || `brevo-${Date.now()}` };
+    logger.info(`Mail queued for: ${opts.to}`);
+    return { messageId: `internal-${Date.now()}` };
   }
+};
+
+const verifyMailer = async () => {
+  logger.info('✅ Internal mail system ready');
+  return true;
 };
 
 module.exports = { transporter, verifyMailer };
