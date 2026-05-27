@@ -40,18 +40,19 @@ router.post('/send', mailLimiter, async (req, res) => {
     }
 
     const messageId = `<${uuidv4()}@securemail>`;
+    const now = new Date().toISOString();
 
     // Save to sender's sent folder
     await pool.query(
       `INSERT INTO emails (id, owner_id, from_address, to_addresses, cc_addresses, bcc_addresses,
         subject, body_encrypted, is_encrypted, folder, status, message_id, sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'sent','sent',$10,to_char(now(),'YYYY-MM-DD HH24:MI:SS'))`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'sent','sent',$10,$11)`,
       [
         uuidv4(), req.user.userId, req.user.email,
         JSON.stringify(Array.isArray(to) ? to : [to]),
         JSON.stringify(cc ? [cc] : []),
         JSON.stringify(bcc ? [bcc] : []),
-        subject, bodyToStore, isEncrypted, messageId
+        subject, bodyToStore, isEncrypted, messageId, now
       ]
     );
 
@@ -60,8 +61,9 @@ router.post('/send', mailLimiter, async (req, res) => {
       await pool.query(
         `INSERT INTO emails (id, owner_id, from_address, to_addresses,
           subject, body_encrypted, is_encrypted, folder, status, message_id, received_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'inbox','received',$8,to_char(now(),'YYYY-MM-DD HH24:MI:SS'))`,
-        [uuidv4(), recipient.id, req.user.email, JSON.stringify([to]), subject, bodyToStore, isEncrypted, messageId]
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'inbox','received',$8,$9)`,
+        [uuidv4(), recipient.id, req.user.email, JSON.stringify([to]),
+         subject, bodyToStore, isEncrypted, messageId, now]
       );
       logger.info(`Internal mail delivered to ${to}`);
     }
