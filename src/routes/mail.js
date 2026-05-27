@@ -194,5 +194,29 @@ router.patch('/:id/read', async (req, res) => {
     res.status(500).json({ error: 'Failed to mark as read' });
   }
 });
+// ── POST /api/mail/decrypt ───────────────────────────────────────────
+router.post('/decrypt', async (req, res) => {
+  try {
+    const { encryptedBody, privateKey } = req.body;
+    if (!encryptedBody || !privateKey) {
+      return res.status(400).json({ error: 'encryptedBody and privateKey required' });
+    }
+
+    const result = await pool.query(
+      'SELECT public_key FROM users WHERE id = $1',
+      [req.user.userId]
+    );
+    const publicKey = result.rows[0]?.public_key;
+    if (!publicKey) return res.status(400).json({ error: 'No public key found' });
+
+    const { decryptMessage } = require('../utils/encryption');
+    const decrypted = await decryptMessage(encryptedBody, publicKey, privateKey);
+
+    res.json({ decrypted });
+  } catch (err) {
+    logger.error('Decrypt error: ' + err.message);
+    res.status(400).json({ error: 'Decryption failed — wrong private key?' });
+  }
+});
 
 module.exports = router;
