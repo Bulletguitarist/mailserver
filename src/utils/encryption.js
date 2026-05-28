@@ -14,52 +14,52 @@ const generateKeyPair = async () => {
   };
 };
 
-const encryptMessage = async (message, recipientPublicKeyB64) => {
-  const s = await getSodium();
-  const messageBytes = s.from_string(message);
-
-  let recipientPubKey;
+const fromBase64Safe = (s, b64str) => {
+  const str = b64str.trim();
   try {
-    recipientPubKey = s.from_base64(recipientPublicKeyB64, s.base64_variants.ORIGINAL);
+    return s.from_base64(str, s.base64_variants.ORIGINAL);
   } catch {
     try {
-      recipientPubKey = s.from_base64(recipientPublicKeyB64, s.base64_variants.URLSAFE);
+      return s.from_base64(str, s.base64_variants.URLSAFE);
     } catch {
-      recipientPubKey = s.from_base64(recipientPublicKeyB64);
+      try {
+        return s.from_base64(str, s.base64_variants.ORIGINAL_NO_PADDING);
+      } catch {
+        return s.from_base64(str, s.base64_variants.URLSAFE_NO_PADDING);
+      }
     }
   }
+};
 
-  const encrypted = s.crypto_box_seal(messageBytes, recipientPubKey);
+const encryptMessage = async (message, recipientPublicKeyB64) => {
+  const s = await getSodium();
+  const messageBytes    = s.from_string(message);
+  const recipientPubKey = fromBase64Safe(s, recipientPublicKeyB64);
+  const encrypted       = s.crypto_box_seal(messageBytes, recipientPubKey);
   return Buffer.from(encrypted).toString('base64');
 };
 
 const decryptMessage = async (encryptedB64, recipientPublicKeyB64, recipientPrivateKeyB64) => {
   const s = await getSodium();
 
-  const encrypted  = s.from_base64(encryptedB64);
+  const encrypted  = fromBase64Safe(s, encryptedB64);
+  const publicKey  = fromBase64Safe(s, recipientPublicKeyB64);
+  const privateKey = fromBase64Safe(s, recipientPrivateKeyB64);
 
-  let publicKey;
+  let decrypted;
   try {
-    publicKey = s.from_base64(recipientPublicKeyB64, s.base64_variants.ORIGINAL);
-  } catch {
-    publicKey = s.from_base64(recipientPublicKeyB64);
+    decrypted = s.crypto_box_seal_open(encrypted, publicKey, privateKey);
+  } catch (e) {
+    throw new Error('Decryption failed — wrong key or corrupted message');
   }
 
-  let privateKey;
-  try {
-    privateKey = s.from_base64(recipientPrivateKeyB64, s.base64_variants.ORIGINAL);
-  } catch {
-    privateKey = s.from_base64(recipientPrivateKeyB64);
-  }
-
-  const decrypted = s.crypto_box_seal_open(encrypted, publicKey, privateKey);
-  if (!decrypted) throw new Error('Decryption failed');
+  if (!decrypted) throw new Error('Decryption failed — wrong private key');
   return s.to_string(decrypted);
 };
 
 const encryptSymmetric = async (message, keyB64) => {
   const s     = await getSodium();
-  const key   = s.from_base64(keyB64);
+  const key   = fromBase64Safe(s, keyB64);
   const nonce = s.randombytes_buf(s.crypto_secretbox_NONCEBYTES);
   const msg   = s.from_string(message);
   const encrypted = s.crypto_secretbox_easy(msg, nonce, key);
@@ -71,9 +71,9 @@ const encryptSymmetric = async (message, keyB64) => {
 
 const decryptSymmetric = async (ciphertextB64, nonceB64, keyB64) => {
   const s          = await getSodium();
-  const ciphertext = s.from_base64(ciphertextB64);
-  const nonce      = s.from_base64(nonceB64);
-  const key        = s.from_base64(keyB64);
+  const ciphertext = fromBase64Safe(s, ciphertextB64);
+  const nonce      = fromBase64Safe(s, nonceB64);
+  const key        = fromBase64Safe(s, keyB64);
   const decrypted  = s.crypto_secretbox_open_easy(ciphertext, nonce, key);
   if (!decrypted) throw new Error('Symmetric decryption failed');
   return s.to_string(decrypted);
